@@ -127,10 +127,8 @@ type manifestResource struct {
 
 func (r manifestResource) Create(ctx context.Context, req tfsdk.CreateResourceRequest, resp *tfsdk.CreateResourceResponse) {
 	var data manifestResourceData
-
 	diags := req.Config.Get(ctx, &data)
 	resp.Diagnostics.Append(diags...)
-
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -138,13 +136,8 @@ func (r manifestResource) Create(ctx context.Context, req tfsdk.CreateResourceRe
 	request, _ := json.Marshal(createManifestReqest{
 		Manifest: data.Manifest.Value,
 	})
-	resultBody, err := r.provider.client.Request(ctx, "apps.manifest.create", request)
-	if err != nil {
-		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create manifest, got error: %s", err))
-		return
-	}
 	var resultJson createManifestResponse
-	err = json.Unmarshal(resultBody, &resultJson)
+	err := r.provider.client.Request(ctx, "apps.manifest.create", request, &resultJson)
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create manifest, got error: %s", err))
 		return
@@ -160,7 +153,6 @@ func (r manifestResource) Create(ctx context.Context, req tfsdk.CreateResourceRe
 	data.OAuthAuthorizeUrl = types.String{Value: resultJson.OAuthAuthorizeUrl}
 
 	tflog.Trace(ctx, "created a manifest")
-
 	diags = resp.State.Set(ctx, &data)
 	resp.Diagnostics.Append(diags...)
 }
@@ -178,17 +170,13 @@ func (r manifestResource) Read(ctx context.Context, req tfsdk.ReadResourceReques
 	request, _ := json.Marshal(createManifestReqest{
 		AppID: data.ID.Value,
 	})
-	resultBody, err := r.provider.client.Request(ctx, "apps.manifest.export", request)
+	var resultJson exportManifestResponse
+	err := r.provider.client.Request(ctx, "apps.manifest.export", request, &resultJson)
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create manifest, got error: %s", err))
 		return
 	}
-	var resultJson exportManifestResponse
-	err = json.Unmarshal(resultBody, &resultJson)
-	if err != nil {
-		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read manifest, got error: %s", err))
-		return
-	}
+
 	norm, _ := json.Marshal(resultJson.Manifest)
 	data.Manifest = types.String{Value: string(norm)}
 
@@ -210,7 +198,7 @@ func (r manifestResource) Update(ctx context.Context, req tfsdk.UpdateResourceRe
 		AppID:    data.ID.Value,
 		Manifest: data.Manifest.Value,
 	})
-	_, err := r.provider.client.Request(ctx, "apps.manifest.update", request)
+	err := r.provider.client.Request(ctx, "apps.manifest.update", request, nil)
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create manifest, got error: %s", err))
 		return
@@ -233,7 +221,7 @@ func (r manifestResource) Delete(ctx context.Context, req tfsdk.DeleteResourceRe
 	request, _ := json.Marshal(createManifestReqest{
 		AppID: data.ID.Value,
 	})
-	_, err := r.provider.client.Request(ctx, "apps.manifest.delete", request)
+	err := r.provider.client.Request(ctx, "apps.manifest.delete", request, nil)
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete manifest, got error: %s", err))
 		return

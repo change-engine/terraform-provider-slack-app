@@ -1,5 +1,7 @@
 # Terraform Provider Slack App
 
+[![registry.terraform.io](https://img.shields.io/badge/terraform-docs-success)](https://registry.terraform.io/providers/change-engine/slack-app/latest/docs)
+
 This is for managing Slack App Manifests, it is no use if you are not developing an App for Slack. 
 
 ## Requirements
