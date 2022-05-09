@@ -6,7 +6,7 @@ import (
 	"log"
 
 	"github.com/change-engine/terraform-provider-slack-app/internal/provider"
-	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
+	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 )
 
 //go:generate terraform fmt -recursive ./examples/
@@ -22,13 +22,13 @@ func main() {
 	flag.BoolVar(&debug, "debug", false, "set to true to run the provider with support for debuggers like delve")
 	flag.Parse()
 
-	opts := tfsdk.ServeOpts{
+	opts := providerserver.ServeOpts{
 		Debug: debug,
 
-		Name: "registry.terraform.io/change-engine/slack-app",
+		Address: "registry.terraform.io/change-engine/slack-app",
 	}
 
-	err := tfsdk.Serve(context.Background(), provider.New(version), opts)
+	err := providerserver.Serve(context.Background(), provider.New(version), opts)
 
 	if err != nil {
 		log.Fatal(err.Error())
