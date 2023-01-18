@@ -8,7 +8,7 @@ import (
 )
 
 var testAccProtoV6ProviderFactories = map[string]func() (tfprotov6.ProviderServer, error){
-	"slack-app": providerserver.NewProtocol6WithError(New("test")()),
+	"slack-app": providerserver.NewProtocol6WithError(New()),
 }
 
 func testAccPreCheck(t *testing.T) {}
