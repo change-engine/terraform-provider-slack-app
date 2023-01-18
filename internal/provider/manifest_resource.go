@@ -5,86 +5,104 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/change-engine/terraform-provider-slack-app/client"
 	"github.com/hashicorp/terraform-plugin-framework/path"
-	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
-var _ tfsdk.ResourceType = manifestResourceType{}
-var _ tfsdk.Resource = manifestResource{}
+var (
+	_ resource.Resource                = &manifestResource{}
+	_ resource.ResourceWithConfigure   = &manifestResource{}
+	_ resource.ResourceWithImportState = &manifestResource{}
+)
 
-type manifestResourceType struct{}
+func NewManifestResource() resource.Resource {
+	return &manifestResource{}
+}
 
-func (t manifestResourceType) GetSchema(ctx context.Context) (tfsdk.Schema, diag.Diagnostics) {
-	return tfsdk.Schema{
+type manifestResource struct {
+	client *client.SlackApp
+}
+
+func (r *manifestResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_manifest"
+}
+
+func (r *manifestResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
 		MarkdownDescription: "Slack App Manifest resource",
 
-		Attributes: map[string]tfsdk.Attribute{
-			"id": {
+		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "The ID of the app.",
-				PlanModifiers: tfsdk.AttributePlanModifiers{
-					tfsdk.UseStateForUnknown(),
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
 				},
-				Type: types.StringType,
 			},
-			"manifest": {
+			"manifest": schema.StringAttribute{
 				MarkdownDescription: "A JSON app manifest encoded as a string.",
 				Required:            true,
-				Type:                types.StringType,
 			},
-			"credentials": {
+			"credentials": schema.SingleNestedAttribute{
 				Computed: true,
-				PlanModifiers: tfsdk.AttributePlanModifiers{
-					tfsdk.UseStateForUnknown(),
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
 				},
-				Attributes: tfsdk.SingleNestedAttributes(map[string]tfsdk.Attribute{
-					"client_id": {
+				Attributes: map[string]schema.Attribute{
+					"client_id": schema.StringAttribute{
 						Computed:            true,
 						MarkdownDescription: "Send with `client_secret` when making your oauth.v2.access request.",
-						Type:                types.StringType,
-					},
-					"client_secret": {
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						}},
+					"client_secret": schema.StringAttribute{
 						Computed:            true,
 						Sensitive:           true,
 						MarkdownDescription: "Send with `client_id` when making your oauth.v2.access request.",
-						Type:                types.StringType,
-					},
-					"verification_token": {
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						}},
+					"verification_token": schema.StringAttribute{
 						Computed:            true,
 						Sensitive:           true,
 						MarkdownDescription: "used to verify that requests come from Slack.",
-						Type:                types.StringType,
 						DeprecationMessage:  "We strongly recommend using the, more secure, `signing_secret` instead.",
-					},
-					"signing_secret": {
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						}},
+					"signing_secret": schema.StringAttribute{
 						Computed:            true,
 						Sensitive:           true,
 						MarkdownDescription: "Slack signs the requests we send you using this secret. Confirm that each request comes from Slack by verifying its unique signature.",
-						Type:                types.StringType,
-					},
-				}),
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.UseStateForUnknown(),
+						}},
+				},
 			},
-			"oauth_authorize_url": {
+			"oauth_authorize_url": schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "Full URL for athorization.",
-				PlanModifiers: tfsdk.AttributePlanModifiers{
-					tfsdk.UseStateForUnknown(),
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
 				},
-				Type: types.StringType,
 			},
 		},
-	}, nil
+	}
 }
 
-func (t manifestResourceType) NewResource(ctx context.Context, in tfsdk.Provider) (tfsdk.Resource, diag.Diagnostics) {
-	provider, diags := convertProviderType(in)
+func (r *manifestResource) Configure(_ context.Context, req resource.ConfigureRequest, _ *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
 
-	return manifestResource{
-		provider: provider,
-	}, diags
+	r.client = req.ProviderData.(*client.SlackApp)
 }
 
 type Credentials struct {
@@ -94,10 +112,10 @@ type Credentials struct {
 	SigningSecret     types.String `tfsdk:"signing_secret"`
 }
 
-type manifestResourceData struct {
+type manifestResourceModel struct {
 	Manifest          types.String `tfsdk:"manifest"`
 	ID                types.String `tfsdk:"id"`
-	Credentials       *Credentials `tfsdk:"credentials"`
+	Credentials       types.Object `tfsdk:"credentials"`
 	OAuthAuthorizeUrl types.String `tfsdk:"oauth_authorize_url"`
 }
 
@@ -121,46 +139,39 @@ type exportManifestResponse struct {
 	Manifest interface{} `json:"manifest"`
 }
 
-type manifestResource struct {
-	provider provider
-}
-
-func (r manifestResource) Create(ctx context.Context, req tfsdk.CreateResourceRequest, resp *tfsdk.CreateResourceResponse) {
-	var data manifestResourceData
-	diags := req.Config.Get(ctx, &data)
+func (r *manifestResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var plan manifestResourceModel
+	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
 	request, _ := json.Marshal(createManifestReqest{
-		Manifest: data.Manifest.Value,
+		Manifest: plan.Manifest.ValueString(),
 	})
 	var resultJson createManifestResponse
-	err := r.provider.client.Request(ctx, "apps.manifest.create", request, &resultJson)
+	err := r.client.Request(ctx, "apps.manifest.create", request, &resultJson)
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create manifest, got error: %s", err))
 		return
 	}
-
-	data.ID = types.String{Value: resultJson.AppID}
-	data.Credentials = &Credentials{
-		ClientId:          types.String{Value: resultJson.Credentials.ClientId},
-		ClientSecret:      types.String{Value: resultJson.Credentials.ClientSecret},
-		SigningSecret:     types.String{Value: resultJson.Credentials.SigningSecret},
-		VerificationToken: types.String{Value: resultJson.Credentials.VerificationToken},
-	}
-	data.OAuthAuthorizeUrl = types.String{Value: resultJson.OAuthAuthorizeUrl}
-
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), resultJson.AppID)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("manifest"), plan.Manifest)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("credentials"), Credentials{
+		ClientId:          types.StringValue(resultJson.Credentials.ClientId),
+		ClientSecret:      types.StringValue(resultJson.Credentials.ClientSecret),
+		VerificationToken: types.StringValue(resultJson.Credentials.VerificationToken),
+		SigningSecret:     types.StringValue(resultJson.Credentials.SigningSecret),
+	})...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("oauth_authorize_url"), resultJson.OAuthAuthorizeUrl)...)
 	tflog.Trace(ctx, "created a manifest")
-	diags = resp.State.Set(ctx, &data)
-	resp.Diagnostics.Append(diags...)
 }
 
-func (r manifestResource) Read(ctx context.Context, req tfsdk.ReadResourceRequest, resp *tfsdk.ReadResourceResponse) {
-	var data manifestResourceData
+func (r *manifestResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var state manifestResourceModel
 
-	diags := req.State.Get(ctx, &data)
+	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
 
 	if resp.Diagnostics.HasError() {
@@ -168,26 +179,26 @@ func (r manifestResource) Read(ctx context.Context, req tfsdk.ReadResourceReques
 	}
 
 	request, _ := json.Marshal(createManifestReqest{
-		AppID: data.ID.Value,
+		AppID: state.ID.ValueString(),
 	})
 	var resultJson exportManifestResponse
-	err := r.provider.client.Request(ctx, "apps.manifest.export", request, &resultJson)
+	err := r.client.Request(ctx, "apps.manifest.export", request, &resultJson)
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create manifest, got error: %s", err))
 		return
 	}
 
 	norm, _ := json.Marshal(resultJson.Manifest)
-	data.Manifest = types.String{Value: string(norm)}
+	state.Manifest = types.StringValue(string(norm))
 
-	diags = resp.State.Set(ctx, &data)
+	diags = resp.State.Set(ctx, &state)
 	resp.Diagnostics.Append(diags...)
 }
 
-func (r manifestResource) Update(ctx context.Context, req tfsdk.UpdateResourceRequest, resp *tfsdk.UpdateResourceResponse) {
-	var data manifestResourceData
+func (r *manifestResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	var plan manifestResourceModel
 
-	diags := req.Plan.Get(ctx, &data)
+	diags := req.Plan.Get(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
 
 	if resp.Diagnostics.HasError() {
@@ -195,23 +206,23 @@ func (r manifestResource) Update(ctx context.Context, req tfsdk.UpdateResourceRe
 	}
 
 	request, _ := json.Marshal(createManifestReqest{
-		AppID:    data.ID.Value,
-		Manifest: data.Manifest.Value,
+		AppID:    plan.ID.ValueString(),
+		Manifest: plan.Manifest.ValueString(),
 	})
-	err := r.provider.client.Request(ctx, "apps.manifest.update", request, nil)
+	err := r.client.Request(ctx, "apps.manifest.update", request, nil)
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create manifest, got error: %s", err))
 		return
 	}
 
-	diags = resp.State.Set(ctx, &data)
+	diags = resp.State.Set(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
 }
 
-func (r manifestResource) Delete(ctx context.Context, req tfsdk.DeleteResourceRequest, resp *tfsdk.DeleteResourceResponse) {
-	var data manifestResourceData
+func (r *manifestResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	var state manifestResourceModel
 
-	diags := req.State.Get(ctx, &data)
+	diags := req.State.Get(ctx, &state)
 	resp.Diagnostics.Append(diags...)
 
 	if resp.Diagnostics.HasError() {
@@ -219,9 +230,9 @@ func (r manifestResource) Delete(ctx context.Context, req tfsdk.DeleteResourceRe
 	}
 
 	request, _ := json.Marshal(createManifestReqest{
-		AppID: data.ID.Value,
+		AppID: state.ID.ValueString(),
 	})
-	err := r.provider.client.Request(ctx, "apps.manifest.delete", request, nil)
+	err := r.client.Request(ctx, "apps.manifest.delete", request, nil)
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete manifest, got error: %s", err))
 		return
@@ -230,6 +241,6 @@ func (r manifestResource) Delete(ctx context.Context, req tfsdk.DeleteResourceRe
 	resp.State.RemoveResource(ctx)
 }
 
-func (r manifestResource) ImportState(ctx context.Context, req tfsdk.ImportResourceStateRequest, resp *tfsdk.ImportResourceStateResponse) {
-	tfsdk.ResourceImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+func (r *manifestResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }

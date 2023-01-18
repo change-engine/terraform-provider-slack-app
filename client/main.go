@@ -19,8 +19,8 @@ type errorResponse struct {
 	Errors json.RawMessage `json:"errors"`
 }
 
-func New(token string) SlackApp {
-	return SlackApp{
+func New(token string) *SlackApp {
+	return &SlackApp{
 		token:  token,
 		Client: http.Client{},
 	}
