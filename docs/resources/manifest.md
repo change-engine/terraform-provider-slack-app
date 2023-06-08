@@ -67,5 +67,3 @@ Read-Only:
 - `client_secret` (String, Sensitive) Send with `client_id` when making your oauth.v2.access request.
 - `signing_secret` (String, Sensitive) Slack signs the requests we send you using this secret. Confirm that each request comes from Slack by verifying its unique signature.
 - `verification_token` (String, Sensitive, Deprecated) used to verify that requests come from Slack.
-
-
