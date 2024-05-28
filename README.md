@@ -7,7 +7,7 @@ This is for managing Slack App Manifests, it is no use if you are not developing
 ## Requirements
 
 - [Terraform](https://www.terraform.io/downloads.html) >= 1.0
-- [Go](https://golang.org/doc/install) >= 1.17
+- [Go](https://golang.org/doc/install) >= 1.21
 
 ## Building The Provider
 

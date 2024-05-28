@@ -1,6 +1,8 @@
 module github.com/change-engine/terraform-provider-slack-app
 
-go 1.17
+go 1.21
+
+toolchain go1.21.10
 
 require (
 	github.com/hashicorp/terraform-plugin-docs v0.19.2
