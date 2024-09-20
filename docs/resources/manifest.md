@@ -56,7 +56,7 @@ resource "slack-app_manifest" "example" {
 
 - `credentials` (Attributes) (see [below for nested schema](#nestedatt--credentials))
 - `id` (String) The ID of the app.
-- `oauth_authorize_url` (String) Full URL for athorization.
+- `oauth_authorize_url` (String) Full URL for authorization.
 
 <a id="nestedatt--credentials"></a>
 ### Nested Schema for `credentials`
