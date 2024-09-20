@@ -215,6 +215,15 @@ func (r *manifestResource) Update(ctx context.Context, req resource.UpdateReques
 		return
 	}
 
+	// Slack only returns `credentials` and `oauth_authorize_url` on create, not update. If this was an imported
+	// app, just mark these value as null to avoid "Error: Provider returned invalid result object after apply".
+	if plan.Credentials.IsUnknown() {
+		plan.Credentials = types.ObjectNull(plan.Credentials.AttributeTypes(ctx))
+	}
+	if plan.OAuthAuthorizeUrl.IsUnknown() {
+		plan.OAuthAuthorizeUrl = types.StringNull()
+	}
+
 	diags = resp.State.Set(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
 }
