@@ -88,7 +88,7 @@ func (r *manifestResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 			},
 			"oauth_authorize_url": schema.StringAttribute{
 				Computed:            true,
-				MarkdownDescription: "Full URL for athorization.",
+				MarkdownDescription: "Full URL for authorization.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
@@ -119,8 +119,8 @@ type manifestResourceModel struct {
 	OAuthAuthorizeUrl types.String `tfsdk:"oauth_authorize_url"`
 }
 
-type createManifestReqest struct {
-	AppID    string `json:"app_id,omit_empty"`
+type createManifestRequest struct {
+	AppID    string `json:"app_id,omitempty"`
 	Manifest string `json:"manifest"`
 }
 
@@ -147,7 +147,7 @@ func (r *manifestResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
-	request, _ := json.Marshal(createManifestReqest{
+	request, _ := json.Marshal(createManifestRequest{
 		Manifest: plan.Manifest.ValueString(),
 	})
 	var resultJson createManifestResponse
@@ -178,7 +178,7 @@ func (r *manifestResource) Read(ctx context.Context, req resource.ReadRequest, r
 		return
 	}
 
-	request, _ := json.Marshal(createManifestReqest{
+	request, _ := json.Marshal(createManifestRequest{
 		AppID: state.ID.ValueString(),
 	})
 	var resultJson exportManifestResponse
@@ -205,7 +205,7 @@ func (r *manifestResource) Update(ctx context.Context, req resource.UpdateReques
 		return
 	}
 
-	request, _ := json.Marshal(createManifestReqest{
+	request, _ := json.Marshal(createManifestRequest{
 		AppID:    plan.ID.ValueString(),
 		Manifest: plan.Manifest.ValueString(),
 	})
@@ -213,6 +213,15 @@ func (r *manifestResource) Update(ctx context.Context, req resource.UpdateReques
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create manifest, got error: %s", err))
 		return
+	}
+
+	// Slack only returns `credentials` and `oauth_authorize_url` on create, not update. If this was an imported
+	// app, just mark these value as null to avoid "Error: Provider returned invalid result object after apply".
+	if plan.Credentials.IsUnknown() {
+		plan.Credentials = types.ObjectNull(plan.Credentials.AttributeTypes(ctx))
+	}
+	if plan.OAuthAuthorizeUrl.IsUnknown() {
+		plan.OAuthAuthorizeUrl = types.StringNull()
 	}
 
 	diags = resp.State.Set(ctx, &plan)
@@ -229,7 +238,7 @@ func (r *manifestResource) Delete(ctx context.Context, req resource.DeleteReques
 		return
 	}
 
-	request, _ := json.Marshal(createManifestReqest{
+	request, _ := json.Marshal(createManifestRequest{
 		AppID: state.ID.ValueString(),
 	})
 	err := r.client.Request(ctx, "apps.manifest.delete", request, nil)
