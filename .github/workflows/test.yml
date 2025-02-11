@@ -41,6 +41,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
+      - uses: opentofu/setup-opentofu@v1
       - uses: actions/checkout@v4
       - run: go generate ./...
       - name: git diff
