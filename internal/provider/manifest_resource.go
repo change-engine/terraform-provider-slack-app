@@ -6,9 +6,11 @@ import (
 	"fmt"
 
 	"github.com/change-engine/terraform-provider-slack-app/client"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -49,6 +51,11 @@ func (r *manifestResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 			"manifest": schema.StringAttribute{
 				MarkdownDescription: "A JSON app manifest encoded as a string.",
 				Required:            true,
+			},
+			"export_credentials": schema.BoolAttribute{
+				Optional:            true,
+				MarkdownDescription: "Whether to export generated credentials and the OAuth authorization URL to Terraform state. Set to `false` to keep them out of state.",
+				Default:             booldefault.StaticBool(true),
 			},
 			"credentials": schema.SingleNestedAttribute{
 				Computed: true,
@@ -115,6 +122,7 @@ type Credentials struct {
 type manifestResourceModel struct {
 	Manifest          types.String `tfsdk:"manifest"`
 	ID                types.String `tfsdk:"id"`
+	ExportCredentials types.Bool   `tfsdk:"export_credentials"`
 	Credentials       types.Object `tfsdk:"credentials"`
 	OAuthAuthorizeUrl types.String `tfsdk:"oauth_authorize_url"`
 }
@@ -139,6 +147,50 @@ type exportManifestResponse struct {
 	Manifest interface{} `json:"manifest"`
 }
 
+func credentialAttributeTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"client_id":          types.StringType,
+		"client_secret":      types.StringType,
+		"verification_token": types.StringType,
+		"signing_secret":     types.StringType,
+	}
+}
+
+func exportsCredentials(exportCredentials types.Bool) bool {
+	return exportCredentials.IsNull() || exportCredentials.IsUnknown() || exportCredentials.ValueBool()
+}
+
+func clearCredentialOutputs(model *manifestResourceModel) {
+	model.Credentials = types.ObjectNull(credentialAttributeTypes())
+	model.OAuthAuthorizeUrl = types.StringNull()
+}
+
+func setCredentialOutputs(model *manifestResourceModel, credentials Credentials, oauthAuthorizeURL string) {
+	if !exportsCredentials(model.ExportCredentials) {
+		clearCredentialOutputs(model)
+		return
+	}
+
+	model.Credentials = types.ObjectValueMust(credentialAttributeTypes(), map[string]attr.Value{
+		"client_id":          credentials.ClientId,
+		"client_secret":      credentials.ClientSecret,
+		"verification_token": credentials.VerificationToken,
+		"signing_secret":     credentials.SigningSecret,
+	})
+	model.OAuthAuthorizeUrl = types.StringValue(oauthAuthorizeURL)
+}
+
+func normalizeCredentialOutputs(model *manifestResourceModel) {
+	if !exportsCredentials(model.ExportCredentials) || model.Credentials.IsUnknown() {
+		clearCredentialOutputs(model)
+		return
+	}
+
+	if model.OAuthAuthorizeUrl.IsUnknown() {
+		model.OAuthAuthorizeUrl = types.StringNull()
+	}
+}
+
 func (r *manifestResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan manifestResourceModel
 	diags := req.Plan.Get(ctx, &plan)
@@ -156,15 +208,15 @@ func (r *manifestResource) Create(ctx context.Context, req resource.CreateReques
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create manifest, got error: %s", err))
 		return
 	}
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), resultJson.AppID)...)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("manifest"), plan.Manifest)...)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("credentials"), Credentials{
+	plan.ID = types.StringValue(resultJson.AppID)
+	setCredentialOutputs(&plan, Credentials{
 		ClientId:          types.StringValue(resultJson.Credentials.ClientId),
 		ClientSecret:      types.StringValue(resultJson.Credentials.ClientSecret),
 		VerificationToken: types.StringValue(resultJson.Credentials.VerificationToken),
 		SigningSecret:     types.StringValue(resultJson.Credentials.SigningSecret),
-	})...)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("oauth_authorize_url"), resultJson.OAuthAuthorizeUrl)...)
+	}, resultJson.OAuthAuthorizeUrl)
+	diags = resp.State.Set(ctx, &plan)
+	resp.Diagnostics.Append(diags...)
 	tflog.Trace(ctx, "created a manifest")
 }
 
@@ -190,6 +242,7 @@ func (r *manifestResource) Read(ctx context.Context, req resource.ReadRequest, r
 
 	norm, _ := json.Marshal(resultJson.Manifest)
 	state.Manifest = types.StringValue(string(norm))
+	normalizeCredentialOutputs(&state)
 
 	diags = resp.State.Set(ctx, &state)
 	resp.Diagnostics.Append(diags...)
@@ -215,14 +268,9 @@ func (r *manifestResource) Update(ctx context.Context, req resource.UpdateReques
 		return
 	}
 
-	// Slack only returns `credentials` and `oauth_authorize_url` on create, not update. If this was an imported
-	// app, just mark these value as null to avoid "Error: Provider returned invalid result object after apply".
-	if plan.Credentials.IsUnknown() {
-		plan.Credentials = types.ObjectNull(plan.Credentials.AttributeTypes(ctx))
-	}
-	if plan.OAuthAuthorizeUrl.IsUnknown() {
-		plan.OAuthAuthorizeUrl = types.StringNull()
-	}
+	// Slack only returns credentials and the authorization URL on create. Clear unknown
+	// outputs after update, and always scrub them when export is disabled.
+	normalizeCredentialOutputs(&plan)
 
 	diags = resp.State.Set(ctx, &plan)
 	resp.Diagnostics.Append(diags...)

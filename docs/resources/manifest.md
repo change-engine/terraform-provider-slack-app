@@ -52,6 +52,10 @@ resource "slack-app_manifest" "example" {
 
 - `manifest` (String) A JSON app manifest encoded as a string.
 
+### Optional
+
+- `export_credentials` (Boolean) Whether to export generated credentials and the OAuth authorization URL to Terraform state. Set to `false` to keep them out of state.
+
 ### Read-Only
 
 - `credentials` (Attributes) (see [below for nested schema](#nestedatt--credentials))
