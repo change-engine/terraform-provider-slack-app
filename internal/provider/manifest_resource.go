@@ -54,6 +54,7 @@ func (r *manifestResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 			},
 			"export_credentials": schema.BoolAttribute{
 				Optional:            true,
+				Computed:            true,
 				MarkdownDescription: "Whether to export generated credentials and the OAuth authorization URL to Terraform state. Set to `false` to keep them out of state.",
 				Default:             booldefault.StaticBool(true),
 			},

@@ -75,6 +75,9 @@ func TestManifestResourceExportCredentialsSchema(t *testing.T) {
 	if !attribute.Optional {
 		t.Fatal("expected export_credentials to be optional")
 	}
+	if !attribute.Computed {
+		t.Fatal("expected export_credentials to be computed for its default")
+	}
 	if attribute.Default == nil {
 		t.Fatal("expected export_credentials to default to true")
 	}
