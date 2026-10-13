@@ -100,14 +100,15 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           BOT: ${{ steps.app.outputs.app-slug }}[bot]
-        # The patch is empty when nothing needed regenerating.
+        # CI skips ecu's own pushes to ecu/sync and runs on this commit instead, so commit
+        # even when nothing needed regenerating: a skipped check counts as passed.
         run: |
           if [ -s "$RUNNER_TEMP/sync.patch" ]; then
             git apply --index "$RUNNER_TEMP/sync.patch"
-            id=$(gh api "users/$BOT" --jq .id)
-            git -c user.name="$BOT" -c user.email="$id+$BOT@users.noreply.github.com" commit -m "$TITLE"
-            git push origin HEAD:ecu/sync
           fi
+          id=$(gh api "users/$BOT" --jq .id)
+          git -c user.name="$BOT" -c user.email="$id+$BOT@users.noreply.github.com" commit --allow-empty -m "$TITLE"
+          git push origin HEAD:ecu/sync
 
       - name: Pull request
         id: pr
