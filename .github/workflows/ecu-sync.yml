@@ -31,7 +31,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
 
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -67,7 +67,7 @@ jobs:
           done
           git diff --cached --binary HEAD > "$RUNNER_TEMP/sync.patch"
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sync
           path: ${{ runner.temp }}/sync.patch
@@ -81,17 +81,17 @@ jobs:
     steps:
       # Pushes made with GITHUB_TOKEN don't trigger CI, so commit and merge as the app.
       - id: app
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
           client-id: ${{ secrets.ECU_SYNC_CLIENT_ID }}
           private-key: ${{ secrets.ECU_SYNC_PRIVATE_KEY }}
 
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
           token: ${{ steps.app.outputs.token }}
 
-      - uses: actions/download-artifact@v8.0.2
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: sync
           path: ${{ runner.temp }}
